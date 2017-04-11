@@ -4,7 +4,7 @@ from statistics import mean, median
 import numpy as np
 
 env = gym.make('CartPole-v0')
-random_games = 20000
+random_games = 2000
 maximum_steps = 500
 minimum_score = 90
 
@@ -22,6 +22,8 @@ def initial_data():
         for _ in range(maximum_steps):
             action = env.action_space.sample()
             observation, reward, done, info = env.step(action)
+            print(observation)
+            quit()
             if len(previous_observation) > 0:
                 game_memory.append([previous_observation, action])
             score += reward

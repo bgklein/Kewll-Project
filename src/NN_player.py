@@ -95,5 +95,6 @@ def playgame(trained_model, action_choices, acceptable_score):
 
 
 our_data = generate_data.initial_data()
+print(len(our_data))
 our_model = train_model(training_data=our_data, output_size=env.action_space.n)
 playgame(trained_model=our_model, action_choices=env.action_space.n, acceptable_score=minimum_score)
