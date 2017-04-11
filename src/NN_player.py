@@ -1,14 +1,7 @@
-import gym
 import numpy as np
 import tflearn
 from tflearn.layers.core import input_data, dropout, fully_connected
 from tflearn.layers.estimator import regression
-import generate_training_data as generate_data
-
-env = gym.make('CartPole-v0')
-random_games = 2000
-maximum_steps = 500
-minimum_score = 90
 
 
 def set_model(input_size, output_size):
@@ -18,7 +11,7 @@ def set_model(input_size, output_size):
     network = dropout(network, 0.8)
     network = fully_connected(network, 256, activation='relu')
     network = dropout(network, 0.8)
-    network = fully_connected(network, 500, activation='relu')
+    network = fully_connected(network, 512, activation='relu')
     network = dropout(network, 0.8)
     network = fully_connected(network, 256, activation='relu')
     network = dropout(network, 0.8)
@@ -40,16 +33,16 @@ def train_model(training_data, output_size, model=False):
     if not model:
         model = set_model(input_size=len(X[0]), output_size=output_size)
 
-    model.fit({'input': X}, {'targets': Y}, n_epoch=2, run_id='openAI')
+    model.fit({'input': X}, {'targets': Y}, n_epoch=3, run_id='openAI')
     model.save('saved_model.model')
     return model
 
 
-def playgame(trained_model, action_choices, acceptable_score):
+def playgame(env, maximum_steps, trained_model, action_choices, acceptable_score, how_many_gameplays):
     scores = []
     choices = []
     training_data = []
-    for each_game in range(20):
+    for each_game in range(how_many_gameplays):
         score = 0
         game_memory = []
         previous_observation = []
@@ -73,6 +66,10 @@ def playgame(trained_model, action_choices, acceptable_score):
             if done:
                 break
 
+        # record the score for each game
+        scores.append(score)
+
+        # the training data generated here can be for future use, but I am not using it right now
         if score > acceptable_score:
             for data in game_memory:
                 output = []
@@ -86,13 +83,11 @@ def playgame(trained_model, action_choices, acceptable_score):
 
                 training_data.append([data[0], output])
 
-        scores.append(score)
-
     print('Average Score', sum(scores) / len(scores))
+    # analyse the distribution of each action chosen
     for _ in range(action_choices):
         print("Choice", _, ":", choices.count(_) / len(choices))
     return training_data
-
 
 our_data = generate_data.initial_data()
 print(len(our_data))
