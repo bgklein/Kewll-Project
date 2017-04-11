@@ -1,11 +1,14 @@
 import collections
 from statistics import mean, median
 import numpy as np
+import gym
 
 env = gym.make('CartPole-v0')
 random_games = 2000
 maximum_steps = 500
 minimum_score = 90
+SAVED_TRAINING_DATA = './configure/saved_data.npy'
+
 
 def initial_data(env, random_games, maximum_steps, minimum_score):
     # all the scores
@@ -27,8 +30,6 @@ def initial_data(env, random_games, maximum_steps, minimum_score):
             action = env.action_space.sample()
             # take the action and get relevant info
             observation, reward, done, info = env.step(action)
-            print(observation)
-            quit()
             # append the [previous_observation, action] pair to memory
             if len(previous_observation) > 0:
                 game_memory.append([previous_observation, action])
@@ -54,7 +55,7 @@ def initial_data(env, random_games, maximum_steps, minimum_score):
         scores.append(score)
 
     training_data_save = np.array(training_data)
-    np.save('saved_data.npy', training_data_save)
+    np.save(SAVED_TRAINING_DATA, training_data_save)
 
     print('Averaged accepted score:', mean(accepted_scores))
     print('Median accepted score:', median(accepted_scores))

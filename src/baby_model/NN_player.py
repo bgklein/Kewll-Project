@@ -3,6 +3,9 @@ import tflearn
 from tflearn.layers.core import input_data, dropout, fully_connected
 from tflearn.layers.estimator import regression
 
+EPOCH = 3
+SAVED_MODEL = 'configure/saved_model.model'
+
 
 def set_model(input_size, output_size):
     network = input_data(shape=[None, input_size, 1], name='input')
@@ -27,18 +30,20 @@ def set_model(input_size, output_size):
 
 
 def train_model(training_data, output_size, model=False):
-    X = np.array([i[0] for i in training_data]).reshape(-1, len(training_data[0][0]), 1)
+    X = np.array([i[0] for i in training_data]).\
+            reshape(-1, len(training_data[0][0]), 1)
     Y = [i[1] for i in training_data]
 
     if not model:
         model = set_model(input_size=len(X[0]), output_size=output_size)
 
-    model.fit({'input': X}, {'targets': Y}, n_epoch=3, run_id='openAI')
-    model.save('saved_model.model')
+    model.fit({'input': X}, {'targets': Y}, n_epoch=EPOCH, run_id='openAI')
+    model.save(SAVED_MODEL)
     return model
 
 
-def playgame(env, maximum_steps, trained_model, action_choices, acceptable_score, how_many_gameplays):
+def playgame(env, maximum_steps, trained_model, action_choices,
+             acceptable_score, how_many_gameplays):
     scores = []
     choices = []
     training_data = []
@@ -53,8 +58,9 @@ def playgame(env, maximum_steps, trained_model, action_choices, acceptable_score
             if len(previous_observation) == 0:
                 action = env.action_space.sample()
             else:
-                action = np.argmax(
-                    trained_model.predict(previous_observation.reshape(-1, len(previous_observation), 1))[0])
+                action = np.argmax(trained_model.predict(
+                    previous_observation.reshape(-1, len(previous_observation),
+                                                 1))[0])
 
             choices.append(action)
             if len(previous_observation) > 0:
@@ -69,7 +75,8 @@ def playgame(env, maximum_steps, trained_model, action_choices, acceptable_score
         # record the score for each game
         scores.append(score)
 
-        # the training data generated here can be for future use, but I am not using it right now
+        # the training data generated here can be for future use, but I am not
+        # using it right now
         if score > acceptable_score:
             for data in game_memory:
                 output = []
@@ -88,8 +95,3 @@ def playgame(env, maximum_steps, trained_model, action_choices, acceptable_score
     for _ in range(action_choices):
         print("Choice", _, ":", choices.count(_) / len(choices))
     return training_data
-
-our_data = generate_data.initial_data()
-print(len(our_data))
-our_model = train_model(training_data=our_data, output_size=env.action_space.n)
-playgame(trained_model=our_model, action_choices=env.action_space.n, acceptable_score=minimum_score)
