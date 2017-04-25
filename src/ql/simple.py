@@ -1,9 +1,10 @@
 import numpy as np
 import gym
 import h5py
+import random
 from keras.models import Sequential, model_from_json
 from keras.layers import Dense
-from keras.optimizers import RMSprop
+from keras.optimizers import Adam
 
 WEIGHT_SAVE = './config/weights.h5'
 MODEL_SAVE_JSON = './config/model.txt'
@@ -11,7 +12,8 @@ MODEL_SAVE_JSON = './config/model.txt'
 
 class Learner:
     def __init__(self, environment, eta=0.001, epsilon=1,
-                 epsilon_decay=0.9995, epsilon_min=0.1, gamma=0.9):
+                 epsilon_decay=0.9995, epsilon_min=0.01,
+                 train_start=1000, gamma=0.99, batch_size=64):
         # Environment data
         self.environment = environment
         self.input_shape = environment.observation_space.shape
@@ -20,6 +22,10 @@ class Learner:
 
         # Learning rate
         self.eta = eta
+
+        # Start training after 1000 (building memory)
+        self.train_start = train_start
+        self.batch_size = batch_size
 
         # Exploration configuration
         self.epsilon = epsilon
@@ -35,13 +41,12 @@ class Learner:
     def init_model(self):
         """ Use Keras to build a model for q-learning."""
         model = Sequential()
-        model.add(Dense(units=128, input_dim=self.input_shape[0],
-                        activation='tanh'))
-        model.add(Dense(units=128, activation='tanh'))
-        model.add(Dense(units=128, activation='tanh'))
+        model.add(Dense(units=24, input_dim=self.input_shape[0],
+                        activation='relu'))
+        model.add(Dense(units=24, activation='relu'))
         # We want rewards instead of probability, so use linear here
         model.add(Dense(units=self.output_num, activation='linear'))
-        model.compile(loss='mse', optimizer=RMSprop(lr=self.eta))
+        model.compile(loss='mse', optimizer=Adam(lr=self.eta))
         self.model = model
 
     def remember_play(self, state, action, reward, next_state, done):
@@ -49,32 +54,46 @@ class Learner:
         # Use tuple to represent one play
         self.memory.append((state, action, reward, next_state, done))
 
-    def replay(self, batch_size):
+        # Decrease epsilon (exploration rate)
+        if self.epsilon > self.epsilon_min:
+            self.epsilon *= self.epsilon_decay
+
+    def replay(self):
         """ Try `batch_size` more moves on the current state, we use game
             data from `self.memory`, so they are labeled. New rewards (future
             rewards) are counted with a discount (self.gamma).
         """
-        indices = np.random.random_integers(0, len(self.memory) - 1,
-                                            min(batch_size, len(self.memory)))
-        for i in indices:
-            state, action, reward, next_state, done = self.memory[i]
+        # Start only have enough memories
+        if len(self.memory) < self.train_start:
+            return
+
+        batch_size = min(self.batch_size, len(self.memory))
+
+        # Use mini_batch, sampling form the memory
+        mini_batch = random.sample(self.memory, batch_size)
+
+        # Since we are suing batch, we need to collect input and target
+        input_update = np.zeros((batch_size, self.input_shape[0]))
+        target_update = np.zeros((batch_size, self.output_num))
+
+        for i in range(batch_size):
+            state, action, reward, next_state, done = mini_batch[i]
+            target = self.model.predict(state)[0]
+
             # Add future discounted reward
             if not done:
-                target = reward + self.gamma * np.amax(self.model.predict
-                                                       (next_state)[0])
+                target[action] = reward + self.gamma * \
+                        np.amax(self.model.predict(next_state)[0])
             else:
-                target = reward
+                target[action] = reward
 
-            # Add the future reward effects on current state, given that action
-            target_next = self.model.predict(state)
-            target_next[0][action] = target
+            # Record the info into batch collection
+            input_update[i] = state
+            target_update[i] = target
 
-            # Update model
-            self.model.fit(state, target_next, epochs=1, verbose=0)
-
-            # Decay the exploration rate
-            if self.epsilon > self.epsilon_min:
-                self.epsilon *= self.epsilon_decay
+        # Update model (also use a batch)
+        self.model.fit(input_update, target_update, batch_size=batch_size,
+                       epochs=1, verbose=0)
 
     def act(self, state):
         """ Pick an action based on either randomness(early stage), or model
@@ -88,7 +107,7 @@ class Learner:
         return np.argmax(self.model.predict(state)[0])
 
 
-def train(epoch, rewards=1, punishment=-100, batch_size=32):
+def train(epoch, rewards=1, punishment=-100):
     """ Use Learner to train an agent to play cartpole.
 
         Argument:
@@ -99,11 +118,13 @@ def train(epoch, rewards=1, punishment=-100, batch_size=32):
     """
     # Init setting
     environment = gym.make('CartPole-v0')
+    environment._max_episodes = 5000
     agent = Learner(environment)
 
     for e in range(epoch):
         # Reset state for each epoch
         state = environment.reset().reshape((1, 4))
+        done = False
 
         # Assume 2000 is our ultimate goal (cart keeps 2000 frames)
         for frame in range(2000):
@@ -118,16 +139,15 @@ def train(epoch, rewards=1, punishment=-100, batch_size=32):
             # Build memory
             agent.remember_play(state, action, reward, next_state, done)
 
+            # Train process
+            agent.replay()
+            state = next_state
+
             # End this game if done
             if done:
                 print(("epoch: {}/{}, score {}, " +
                       "epsilon {}").format(e, epoch, frame, agent.epsilon))
                 break
-            else:
-                state = next_state
-
-        # Use the memory to update model
-        agent.replay(batch_size)
 
     return agent
 
@@ -203,7 +223,7 @@ def playgame(trained_model, how_many_gameplays):
 
 
 def main():
-    model = train(1000, punishment=-1)
+    model = train(1000, punishment=-100)
     playgame(model.model, 20)
 
 
