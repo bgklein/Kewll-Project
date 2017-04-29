@@ -117,8 +117,8 @@ def train(epoch, rewards=1, punishment=-100):
             batch_size, length of the subset of memory used to update model
     """
     # Init setting
-    environment = gym.make('CartPole-v0')
-    environment._max_episodes = 5000
+    environment = gym.make('CartPole-v1')
+
     agent = Learner(environment)
 
     for e in range(epoch):
