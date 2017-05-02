@@ -1,13 +1,18 @@
 import numpy as np
+import pandas as pd
 import gym
 import h5py
 import random
+from collections import deque
 from keras.models import Sequential, model_from_json
 from keras.layers import Dense
 from keras.optimizers import Adam
 
 WEIGHT_SAVE = './config/weights.h5'
 MODEL_SAVE_JSON = './config/model.txt'
+CSV_FILE = './config/plot_data.csv'
+EARLY = 10
+EPOCH = 500
 
 
 class Learner:
@@ -19,6 +24,10 @@ class Learner:
         self.input_shape = environment.observation_space.shape
         self.output_num = environment.action_space.n
         self.memory = []
+
+        # Use queue instead of normal list, so we can always use better
+        # training examples
+        self.memory = deque(maxlen=2000)
 
         # Learning rate
         self.eta = eta
@@ -36,7 +45,9 @@ class Learner:
         self.gamma = gamma
 
         # Init model
-        self.init_model()
+        self.model = self.init_model()
+        self.target_model = self.init_model()
+        self.update_target_model()
 
     def init_model(self):
         """ Use Keras to build a model for q-learning."""
@@ -47,7 +58,7 @@ class Learner:
         # We want rewards instead of probability, so use linear here
         model.add(Dense(units=self.output_num, activation='linear'))
         model.compile(loss='mse', optimizer=Adam(lr=self.eta))
-        self.model = model
+        return model
 
     def remember_play(self, state, action, reward, next_state, done):
         """ Record the previous plays."""
@@ -57,6 +68,10 @@ class Learner:
         # Decrease epsilon (exploration rate)
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
+
+    def update_target_model(self):
+        # Copy the weights from model to target_model
+        self.target_model.set_weights(self.model.get_weights())
 
     def replay(self):
         """ Try `batch_size` more moves on the current state, we use game
@@ -82,8 +97,10 @@ class Learner:
 
             # Add future discounted reward
             if not done:
+                # Use target_model here, because we want to keep the weights
+                # not changing in one complete game
                 target[action] = reward + self.gamma * \
-                        np.amax(self.model.predict(next_state)[0])
+                        np.amax(self.target_model.predict(next_state)[0])
             else:
                 target[action] = reward
 
@@ -118,8 +135,13 @@ def train(epoch, rewards=1, punishment=-100):
     """
     # Init setting
     environment = gym.make('CartPole-v1')
-
     agent = Learner(environment)
+
+    # Early stopping
+    perfect_times = 0
+
+    # Plot
+    scores, epsilons = [], []
 
     for e in range(epoch):
         # Reset state for each epoch
@@ -145,9 +167,35 @@ def train(epoch, rewards=1, punishment=-100):
 
             # End this game if done
             if done:
+                # Update the target model for next inner prediction
+                agent.update_target_model()
+
+                # Store the scores for plotting
+                scores.append(frame)
+                epsilons.append(agent.epsilon)
+
                 print(("epoch: {}/{}, score {}, " +
                       "epsilon {}").format(e, epoch, frame, agent.epsilon))
                 break
+
+        # Early stopping when getting `EARLY` continuous perfect score
+        if frame == 499:
+            perfect_times += 1
+            if perfect_times == EARLY:
+                break
+        else:
+            perfect_times = 0
+
+    # Save the model and weights
+    save_weight(agent.model)
+    save_model(agent.model)
+
+    # Save plotting data
+    df = pd.DataFrame()
+    df['epoch'] = range(1, len(scores) + 1)
+    df['score'] = scores
+    df['epsilon'] = epsilons
+    df.to_csv(CSV_FILE, index=False)
 
     return agent
 
@@ -223,7 +271,7 @@ def playgame(trained_model, how_many_gameplays):
 
 
 def main():
-    model = train(1000, punishment=-100)
+    model = train(EPOCH, punishment=-100)
     playgame(model.model, 20)
 
 
