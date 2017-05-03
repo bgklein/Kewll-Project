@@ -8,17 +8,20 @@ from keras.models import Sequential, model_from_json
 from keras.layers import Dense
 from keras.optimizers import Adam
 
+FILE = 'alpha=0.7'
 WEIGHT_SAVE = './config/weights.h5'
 MODEL_SAVE_JSON = './config/model.txt'
-CSV_FILE = './config/plot_data.csv'
+CSV_FILE = './config/{}.csv'.format(FILE)
 EARLY = 10
-EPOCH = 500
+EPOCH = 300
+ALPHA = 0.7
+RENDER = False
 
 
 class Learner:
     def __init__(self, environment, eta=0.001, epsilon=1,
                  epsilon_decay=0.9995, epsilon_min=0.01,
-                 train_start=1000, gamma=0.99, batch_size=64):
+                 train_start=1000, gamma=0.99, batch_size=32):
         # Environment data
         self.environment = environment
         self.input_shape = environment.observation_space.shape
@@ -99,8 +102,9 @@ class Learner:
             if not done:
                 # Use target_model here, because we want to keep the weights
                 # not changing in one complete game
-                target[action] = reward + self.gamma * \
-                        np.amax(self.target_model.predict(next_state)[0])
+                target[action] = (1 - ALPHA) * reward + ALPHA * \
+                        (self.gamma * np.amax(self.target_model.
+                                              predict(next_state)[0]))
             else:
                 target[action] = reward
 
@@ -175,7 +179,8 @@ def train(epoch, rewards=1, punishment=-100):
                 epsilons.append(agent.epsilon)
 
                 print(("epoch: {}/{}, score {}, " +
-                      "epsilon {}").format(e, epoch, frame, agent.epsilon))
+                      "epsilon {} {}").format(e, epoch, frame,
+                                              agent.epsilon, FILE))
                 break
 
         # Early stopping when getting `EARLY` continuous perfect score
@@ -253,7 +258,8 @@ def playgame(trained_model, how_many_gameplays):
         score = 0
         state = env.reset().reshape((1, 4))
         for _ in range(200):
-            env.render()
+            if RENDER:
+                env.render()
             action = np.argmax(trained_model.predict(state))
             next_state, reward, done, info = env.step(action)
             next_state = next_state.reshape((1, 4))
